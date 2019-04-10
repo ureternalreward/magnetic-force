@@ -1,0 +1,137 @@
+#ifndef FMMTL_DIPOLEB_KERN
+#define FMMTL_DIPOLEB_KERN
+#ifndef FMMTL_KERNEL
+#define FMMTL_KERNEL
+#endif
+#define _USE_MATH_DEFINES
+#include "math.h"
+#include "fmmtl/Kernel.hpp"
+#include "fmmtl/numeric/Vec.hpp"
+#include "glm/glm.hpp"
+#include "glm/gtx/norm.hpp"
+#include "math_constants.h"
+struct DipoleBKernel
+  : public fmmtl::Kernel<DipoleBKernel> {
+  //size of the magnetic dipole particle
+
+  //real type in the kernel, float for performance
+  //in expansion it must use double
+  using _K_real_ = float;
+  _K_real_ m_h;
+  DipoleBKernel(_K_real_ _h = 0.0005) : m_h(_h) {}
+  //kernel real type, possible different from expansion real type
+  
+
+  typedef Vec<3, _K_real_>  source_type;
+  typedef Vec<3, _K_real_>  charge_type;
+  typedef Vec<3, _K_real_>  target_type;
+  typedef Vec<3, _K_real_>  result_type;
+  //kernel_value_type:
+  //rx, ry, rz, w_avr, w_dens
+  //rx,ry,rz are normalized vector from source to target
+  //w_avr is the average density from source to target as sphere
+  //w_dens is the density at target
+
+
+
+  struct kernel_value_type {
+    glm::vec3 r_vec;
+    _K_real_ m_h;
+    FMMTL_INLINE
+      kernel_value_type( glm::vec3 _r_vec, float _m_h) {
+      r_vec = _r_vec;
+      m_h = _m_h;
+    }
+    template<typename _Ty>
+    FMMTL_INLINE void get_weight(_Ty & w_avr, _Ty & w_dens, _Ty r, _Ty h) const {
+      const _Ty one_over_pi = _Ty(M_1_PI);
+      _Ty q = r *(1/ h);
+      _Ty q2 = q*q;
+      _Ty q3 = q2*q;
+      _Ty coe = one_over_pi *(1/ (h*h*h));
+      /*_Ty q = r/h;
+      _Ty coe ;*/
+
+      if (q >= 2) {
+        w_avr = _Ty(0.75)*one_over_pi*(1 / (r*r*r));
+        w_dens = 0;
+        return;
+      }
+      if (q >= 1 && q < 2) {
+        w_avr = -(3.f * (q3*q3 / 6.f - (6.f * q3*q2) / 5.f + 3.f * q2*q2 - (8.f * q3) / 3.f + 1.f / 15)) *one_over_pi*(1 / (4*r*r*r));
+        _Ty tmq = (2 - q);
+        w_dens = coe*_Ty(0.25)*tmq*tmq*tmq;
+        /*_Ty tmqh = (2 - q) / h;
+        w_dens = 0.25 *one_over_pi *tmqh*tmqh*tmqh;*/
+        return;
+      }
+      if (q < 1) {
+        //w_avr = (15.f * q3 - 36.f * q2 + 40.f) / (40 * pi *h*h*h);
+        w_avr = (q*q*(15.f / 40.f*q - 36.f / 40.f) + 1)*coe;
+        _Ty tmq = 2 - q;
+        _Ty omq = 1 - q;
+        w_dens = coe*(_Ty(0.25)*tmq*tmq*tmq - omq*omq*omq);
+        return;
+      }
+    }
+
+    FMMTL_INLINE
+      result_type operator*(const charge_type& _c) {
+      //return result_type{ 0 ,0,0 };
+
+      /*_K_real_ c0{ _K_real_(_c[0]) };
+      _K_real_ c1{ _K_real_(_c[1]) };
+      _K_real_ c2{ _K_real_(_c[2]) };*/
+      glm::vec3 c{ _K_real_(_c[0]),_K_real_(_c[1]) ,_K_real_(_c[2]) };
+
+      _K_real_ r = glm::l2Norm(r_vec);
+      _K_real_ invr = r == 0 ? 1 : 1 / r;
+
+      //rvec becomes normalized.
+      r_vec.operator*=(invr);
+
+      _K_real_ wdens = 1;
+      _K_real_ wavr = 1;
+
+      get_weight(wavr, wdens, r, _K_real_(m_h));
+      _K_real_ temp_v1 = dot(r_vec,c)*(wavr - wdens);
+      _K_real_ temp_v2 = wavr *_K_real_(0.33333333333333333333333f)-wdens;
+
+      _K_real_ out_hx = r_vec.x*temp_v1 - temp_v2*c.x;
+      _K_real_ out_hy = r_vec.y*temp_v1 - temp_v2*c.y;
+      _K_real_ out_hz = r_vec.z*temp_v1 - temp_v2*c.z;
+      return result_type{ out_hx ,out_hy, out_hz };
+    }
+  };
+
+  
+
+  /*Charge as distribution of dipole with function W,
+    result as the magnetic field of the dipole.
+  */
+
+  FMMTL_INLINE
+    kernel_value_type operator()(const target_type& t,
+                                 const source_type& s) const {
+
+    //return kernel_value_type(0.1, 0.1, 0.2, 1,1);
+
+    //Vec<3, _K_real_> rvec{
+    //  _K_real_(t[0]) - _K_real_(s[0]),
+    //  _K_real_(t[1]) - _K_real_(s[1]),
+    //  _K_real_(t[2]) - _K_real_(s[2])};//   Vector from source to target
+    _K_real_ rvec0 = _K_real_(t[0]) - _K_real_(s[0]);
+    _K_real_ rvec1 = _K_real_(t[1]) - _K_real_(s[1]);
+    _K_real_ rvec2 = _K_real_(t[2]) - _K_real_(s[2]);
+
+    return kernel_value_type{glm::vec3(rvec0, rvec1, rvec2), m_h};
+  }
+
+  FMMTL_INLINE
+    kernel_value_type transpose(const kernel_value_type& kts) const {
+    return kts;
+  }
+};
+FMMTL_KERNEL_EXTRAS(DipoleBKernel);
+
+#endif
