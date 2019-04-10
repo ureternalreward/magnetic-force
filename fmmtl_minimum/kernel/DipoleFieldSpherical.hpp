@@ -117,9 +117,7 @@ public:
     complex_type temp_M{ 0,0 };
     for (int n = 0; n < P; ++n) {
       for (int m = 0; m <= n; ++m, ++nm) {
-	//        temp_M._Val[0] = 0;
-	//        temp_M._Val[1] = 0;
-	temp_M = complex_type{0,0};
+		temp_M = complex_type{0,0};
         neg1powmn = SphOp::neg1pow(m + n);
         ddr = neg1powmn*n*conj(Z[nm]) / rho;
         ddt = neg1powmn*conj(dZ[nm]);
